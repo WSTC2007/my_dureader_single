@@ -183,9 +183,9 @@ def run():
     Prepares and runs the whole system.
     """
     args = parse_args()
-    # prepare(args)
-    # train(args)
-    evaluate(args)
+    prepare(args)
+    train(args)
+    # evaluate(args)
     # predict(args)
 
 
