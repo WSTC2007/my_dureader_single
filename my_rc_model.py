@@ -74,21 +74,17 @@ class MatchLSTM(nn.Module):
 
         self.boundary_decoder = BoundaryDecoder(input_dim=enc_output_size, hidden_dim=self.hidden_size)
 
-    def forward(self, p, q, p_length, q_length, start_label, end_label):
+    def forward(self, p, q):
         """
          input:
-            p: batch_size * max_passage_num x padded_p_len
-            q: batch_size * max_passage_num x padded_q_len
-            p_length: batch_size * max_passage_num
-            q_length: batch_size * max_passage_num
-            start_label: batch_size
-            end_label: batch_size
+            p: batch_size x padded_p_len
+            q: batch_size x padded_q_len
         output:
-            output: batch_size x max_passage_num * padded_p_len x 2
+            output: batch_size x padded_p_len x 2
         """
         # get mask
-        q_mask = torch.ne(q, 0).float()  # batch_size * max_passage_num x padded_q_len
-        p_mask = torch.ne(p, 0).float()  # batch_size * max_passage_num x padded_p_len
+        q_mask = torch.ne(q, 0).float()  # batch_size x padded_q_len
+        p_mask = torch.ne(p, 0).float()  # batch_size x padded_p_len
 
         # encode questions
         # sort_q_len, q_perm_idx = q_length.sort(0, descending=True)
@@ -96,14 +92,14 @@ class MatchLSTM(nn.Module):
         # q_perm_idx = q_perm_idx.cuda()
         # q_recover_idx = q_recover_idx.cuda()
         # q = q[q_perm_idx]  # batch_size * max_passage_num x padded_q_len
-        q = q.transpose(0, 1).contiguous()  # padded_q_len x batch_size * max_passage_num
-        q_emb = self.word_embedding(q)  # padded_q_len x batch_size * max_passage_num x embed_dim
+        q = q.transpose(0, 1).contiguous()  # padded_q_len x batch_size
+        q_emb = self.word_embedding(q)  # padded_q_len x batch_size x embed_dim
         # packed_q_in = pack_padded_sequence(q_emb, sort_q_len.data.cpu().numpy())
-        # padded_q_len x batch_size * max_passage_num x hidden_size * 2
+        # padded_q_len x batch_size x hidden_size * 2
         q_output, _ = self.q_encode(q_emb)
-        # batch_size * max_passage_num x padded_q_len x hidden_size * 2
+        # batch_size x padded_q_len x hidden_size * 2
         q_output = q_output.transpose(0, 1).contiguous()
-        # batch_size * max_passage_num x padded_q_len x hidden_size * 2
+        # batch_size x padded_q_len x hidden_size * 2
         q_output = q_output * q_mask.unsqueeze(-1)
         if self.use_dropout:
             q_output = torch.nn.functional.dropout(q_output, p=self.dropout_prob, training=self.training)
@@ -114,47 +110,38 @@ class MatchLSTM(nn.Module):
         # p_perm_idx = p_perm_idx.cuda()
         # p_recover_idx = p_recover_idx.cuda()
         # p = p[p_perm_idx]  # batch_size * max_passage_num x padded_p_len
-        p = p.transpose(0, 1).contiguous()  # padded_p_len x batch_size * max_passage_num
-        p_emb = self.word_embedding(p)  # padded_p_len x batch_size * max_passage_num x embed_dim
+        p = p.transpose(0, 1).contiguous()  # padded_p_len x batch_size
+        p_emb = self.word_embedding(p)  # padded_p_len x batch_size x embed_dim
         p_output, _ = self.p_encode(p_emb)
         # padded_p_len x batch_size * max_passage_num x hidden_size * 2
         # p_output, _ = pad_packed_sequence(packed_p_out)
-        # batch_size * max_passage_num x padded_p_len x hidden_size * 2
+        # batch_size x padded_p_len x hidden_size * 2
         p_output = p_output.transpose(0, 1).contiguous()
-        # batch_size * max_passage_num x padded_p_len x hidden_size * 2
+        # batch_size x padded_p_len x hidden_size * 2
         p_output = p_output * p_mask.unsqueeze(-1)
         if self.use_dropout:
             p_output = torch.nn.functional.dropout(p_output, p=self.dropout_prob, training=self.training)
 
         # match question with passage
-        # p_q_out: batch_size * max_passage_num x padded_p_len x hidden_size * 2
+        # p_q_out: batch_size x padded_p_len x hidden_size * 2
         p_q_out, _ = self.match_lstm(p_output, p_mask, q_output, q_mask)
         if self.use_dropout:
             p_q_out = torch.nn.functional.dropout(p_q_out, p=self.dropout_prob, training=self.training)
 
         # fuse passage embedding
-        # padded_p_len x batch_size * max_passage_num x hidden_size * 2
+        # padded_p_len x batch_size x hidden_size * 2
         p_q_out = p_q_out.transpose(0, 1).contiguous()
         fuse_out, _ = self.fuse_p_encode(p_q_out)
-        # batch_size * max_passage_num x padded_p_len x hidden_size * 2
+        # batch_size x padded_p_len x hidden_size * 2
         fuse_out = fuse_out.transpose(0, 1).contiguous()
         if self.use_dropout:
             fuse_out = torch.nn.functional.dropout(fuse_out, p=self.dropout_prob, training=self.training)
 
         # decode
-        batch_size = start_label.size(0)
-        # batch_size x max_passage_num * padded_p_len x hidden_size * 2
-        concat_p_encode = fuse_out.view(batch_size, -1, fuse_out.size(-1))
-        # batch_size x padded_q_len x hidden_size * 2
-        no_dup_q_encode = q_output.view(batch_size, -1, q_output.size(1), q_output.size(2))[:, 0]
-        # batch_size x max_passage_num * padded_p_len
-        p_mask = p_mask.view(batch_size, -1)
-        # batch_size x padded_q_len
-        q_mask = q_mask.view(batch_size, -1, q_mask.size(1))[:, 0].contiguous()
         # batch_size x hidden_size
-        init_decode_vec = self.decoder_init_state_generator(no_dup_q_encode, q_mask)
-        # batch_size x max_passage_num * padded_p_len x 2
-        output = self.boundary_decoder(concat_p_encode, p_mask, init_decode_vec)
+        init_decode_vec = self.decoder_init_state_generator(q_output, q_mask)
+        # batch_size x padded_p_len x 2
+        output = self.boundary_decoder(fuse_out, p_mask, init_decode_vec)
         return output
 
 
@@ -200,14 +187,10 @@ class RCModel(object):
         log_every_n_batch, n_batch_loss = 50, 0
         self.model.train()
         for bitx, batch in enumerate(train_batches, 1):
-            # batch_size * max_passage_num x padded_p_len
+            # batch_size x padded_p_len
             p = Variable(torch.LongTensor(batch['passage_token_ids'])).cuda()
-            # batch_size * max_passage_num x padded_q_len
+            # batch_size x padded_q_len
             q = Variable(torch.LongTensor(batch['question_token_ids'])).cuda()
-            # batch_size * max_passage_num
-            p_length = Variable(torch.LongTensor(batch['passage_length'])).cuda()
-            # batch_size * max_passage_num
-            q_length = Variable(torch.LongTensor(batch['question_length'])).cuda()
             # batch_size
             start_label = Variable(torch.LongTensor(batch['start_id'])).cuda()
             # batch_size
@@ -216,21 +199,19 @@ class RCModel(object):
             self.optimizer.zero_grad()
             self.model.zero_grad()
 
-            # batch_size x max_passage_num * padded_p_len x 2
-            answer_prob = self.model(p, q, p_length, q_length, start_label, end_label)
-            # batch_size x max_passage_num * padded_p_len
+            # batch_size x padded_p_len x 2
+            answer_prob = self.model(p, q)
+
+            # batch_size x padded_p_len
             answer_begin_prob = answer_prob[:, :, 0].contiguous().view(answer_prob.size(0), answer_prob.size(1))
-            # batch_size x max_passage_num * padded_p_len
+            # batch_size x padded_p_len
             answer_end_prob = answer_prob[:, :, 1].contiguous().view(answer_prob.size(0), answer_prob.size(1))
-            # batch_size
-            _, predict_max_begin_index = torch.max(answer_begin_prob, 1)
-            _, predict_max_end_index = torch.max(answer_end_prob, 1)
 
             # batch_size
-            answer_begin_prob = torch.log(answer_begin_prob[range(predict_max_begin_index.size(0)),
+            answer_begin_prob = torch.log(answer_begin_prob[range(start_label.size(0)),
                                                             start_label.data] + 1e-6)
             # batch_size
-            answer_end_prob = torch.log(answer_end_prob[range(predict_max_begin_index.size(0)),
+            answer_end_prob = torch.log(answer_end_prob[range(end_label.size(0)),
                                                         end_label.data] + 1e-6)
             # batch_size
             total_prob = -(answer_begin_prob + answer_end_prob)
@@ -261,14 +242,14 @@ class RCModel(object):
         be_patient = 0
         for epoch in range(1, epochs + 1):
             print('Training the model for epoch {}'.format(epoch))
-            train_batches = data.gen_mini_batches('train', batch_size, pad_id, shuffle=True)
+            train_batches = data.gen_mini_batches('train', batch_size, pad_id, shuffle=True, train=True)
             train_loss = self._train_epoch(train_batches)
             print('Average train loss for epoch {} is {}'.format(epoch, train_loss))
 
             if evaluate:
                 print('Evaluating the model after epoch {}'.format(epoch))
                 if data.dev_set is not None:
-                    eval_batches = data.gen_mini_batches('dev', batch_size, pad_id, shuffle=False)
+                    eval_batches = data.gen_mini_batches('dev', batch_size, pad_id, shuffle=False, train=False)
                     eval_loss, bleu_rouge = self.evaluate(eval_batches)
                     print('Dev eval loss {}'.format(eval_loss))
                     print('Dev eval result: {}'.format(bleu_rouge))
@@ -306,38 +287,41 @@ class RCModel(object):
             # batch_size * max_passage_num x padded_q_len
             q = Variable(torch.LongTensor(batch['question_token_ids']), volatile=True).cuda()
             # batch_size * max_passage_num
-            p_length = Variable(torch.LongTensor(batch['passage_length']), volatile=True).cuda()
-            # batch_size * max_passage_num
-            q_length = Variable(torch.LongTensor(batch['question_length']), volatile=True).cuda()
+            # p_length = Variable(torch.LongTensor(batch['passage_length']), volatile=True).cuda()
+            # # batch_size * max_passage_num
+            # q_length = Variable(torch.LongTensor(batch['question_length']), volatile=True).cuda()
             # batch_size
             start_label = Variable(torch.LongTensor(batch['start_id']), volatile=True).cuda()
             # batch_size
             end_label = Variable(torch.LongTensor(batch['end_id']), volatile=True).cuda()
-            # batch_size x max_passage_num * padded_p_len x 2
-            answer_prob = self.model(p, q, p_length, q_length, start_label, end_label)
-            # batch_size x max_passage_num * padded_p_len
+            # batch_size * max_passage_num x padded_p_len x 2
+            answer_prob = self.model(p, q)
+            # batch_size * max_passage_num x padded_p_len
             answer_begin_prob = answer_prob[:, :, 0].contiguous().view(answer_prob.size(0), answer_prob.size(1))
-            # batch_size x max_passage_num * padded_p_len
+            # batch_size * max_passage_num x padded_p_len
             answer_end_prob = answer_prob[:, :, 1].contiguous().view(answer_prob.size(0), answer_prob.size(1))
-            # batch_size
+            # batch_size * max_passage_num
             _, predict_max_begin_index = torch.max(answer_begin_prob, 1)
             _, predict_max_end_index = torch.max(answer_end_prob, 1)
             #
-            # batch_size
+            # batch_size * max_passage_num
             answer_begin_prob_log = torch.log(answer_begin_prob[range(predict_max_begin_index.size(0)),
                                                                 start_label.data] + 1e-6)
             answer_end_prob_log = torch.log(answer_end_prob[range(predict_max_begin_index.size(0)),
                                                             end_label.data] + 1e-6)
-
+            # batch_size * max_passage_num
             total_prob = -(answer_begin_prob_log + answer_end_prob_log)
             loss = torch.mean(total_prob)
             total_loss += loss.data[0]
             total_num += len(batch['raw_data'])
-            padded_p_len = len(batch['passage_token_ids'][0])
+            # padded_p_len = len(batch['passage_token_ids'][0])
+            max_passage_num = p.size(0) // start_label.size(0)
+            for idx, sample in enumerate(batch['raw_data']):
+                # max_passage_num x padded_p_len
+                start_prob = answer_begin_prob[idx * max_passage_num: (idx + 1) * max_passage_num, :]
+                end_prob = answer_end_prob[idx * max_passage_num: (idx + 1) * max_passage_num, :]
 
-            for sample, start_prob, end_prob in zip(batch['raw_data'], answer_begin_prob, answer_end_prob):
-
-                best_answer = self.find_best_answer(sample, start_prob, end_prob, padded_p_len)
+                best_answer = self.find_best_answer(sample, start_prob, end_prob)
                 if save_full_info:
                     sample['pred_answers'] = [best_answer]
                     pred_answers.append(sample)
@@ -424,20 +408,18 @@ class RCModel(object):
         #     yes_bleu_rouge = None
         # return des_bleu_rouge, ent_bleu_rouge, yes_bleu_rouge
 
-    def find_best_answer(self, sample, start_prob, end_prob, padded_p_len):
+    def find_best_answer(self, sample, start_prob, end_prob):
+        #  start_prob: max_passage_num x padded_p_len
         """
         Finds the best answer for a sample given start_prob and end_prob for each position.
         This will call find_best_answer_for_passage because there are multiple passages in a sample
         """
         best_p_idx, best_span, best_score = None, None, 0
         for p_idx, passage in enumerate(sample['passages']):
-            if p_idx >= self.max_p_num:
+            if p_idx >= start_prob.size(0):
                 continue
             passage_len = min(self.max_p_len, len(passage['passage_tokens']))
-            answer_span, score = self.find_best_answer_for_passage(
-                start_prob[p_idx * padded_p_len: (p_idx + 1) * padded_p_len],
-                end_prob[p_idx * padded_p_len: (p_idx + 1) * padded_p_len],
-                passage_len)
+            answer_span, score = self.find_best_answer_for_passage(start_prob[p_idx], end_prob[p_idx], passage_len)
             if score > best_score:
                 best_score = score
                 best_p_idx = p_idx

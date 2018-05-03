@@ -249,10 +249,10 @@ class BoundaryDecoderAttention(torch.nn.Module):
 
 class BoundaryDecoder(torch.nn.Module):
     """
-    input:  encoded stories:    batch_size x max_passage_num * padded_p_len x hidden_size * 2
-            story mask:         batch_size x max_passage_num * padded_p_len
+    input:  encoded stories:    batch_size x padded_p_len x hidden_size * 2
+            story mask:         batch_size x padded_p_len
             init states:        batch_size x hidden_size
-    output: res:                batch_size x max_passage_num * padded_p_len x 2
+    output: res:                batch_size x padded_p_len x 2
     """
 
     def __init__(self, input_dim, hidden_dim):
