@@ -183,10 +183,11 @@ class RCModel(object):
         Args:
             train_batches: iterable batch data for training
         """
-        total_loss = 0
+        total_loss, num_of_batch = 0, 0
         log_every_n_batch, n_batch_loss = 50, 0
         self.model.train()
         for bitx, batch in enumerate(train_batches, 1):
+            num_of_batch += 1
             # batch_size x padded_p_len
             p = Variable(torch.LongTensor(batch['passage_token_ids'])).cuda()
             # batch_size x padded_q_len
@@ -203,9 +204,9 @@ class RCModel(object):
             answer_prob = self.model(p, q)
 
             # batch_size x padded_p_len
-            answer_begin_prob = answer_prob[:, :, 0].contiguous().view(answer_prob.size(0), answer_prob.size(1))
+            answer_begin_prob = answer_prob[:, :, 0].contiguous()
             # batch_size x padded_p_len
-            answer_end_prob = answer_prob[:, :, 1].contiguous().view(answer_prob.size(0), answer_prob.size(1))
+            answer_end_prob = answer_prob[:, :, 1].contiguous()
 
             # batch_size
             answer_begin_prob = torch.log(answer_begin_prob[range(start_label.size(0)),
@@ -224,7 +225,7 @@ class RCModel(object):
                 n_batch_loss = 0
             loss.backward()
             self.optimizer.step()
-        return 1.0 * total_loss / len(train_batches)
+        return 1.0 * total_loss / num_of_batch
 
     def train(self, data, epochs, batch_size, save_dir, save_prefix, evaluate=True):
         """
@@ -250,8 +251,7 @@ class RCModel(object):
                 print('Evaluating the model after epoch {}'.format(epoch))
                 if data.dev_set is not None:
                     eval_batches = data.gen_mini_batches('dev', batch_size, pad_id, shuffle=False, train=False)
-                    eval_loss, bleu_rouge = self.evaluate(eval_batches)
-                    print('Dev eval loss {}'.format(eval_loss))
+                    bleu_rouge = self.evaluate(eval_batches)
                     print('Dev eval result: {}'.format(bleu_rouge))
 
                     if bleu_rouge['Rouge-L'] > max_rouge_l:
@@ -278,9 +278,10 @@ class RCModel(object):
             save_full_info: if True, the pred_answers will be added to raw sample and saved
         """
         pred_answers, ref_answers = [], []
-        total_loss, total_num = 0, 0
+        total_loss, total_num, num_of_batch = 0, 0, 0
         self.model.eval()
         for b_itx, batch in enumerate(eval_batches):
+            num_of_batch += 1
             # print("now is batch: ", b_itx)
             # batch_size * max_passage_num x padded_p_len
             p = Variable(torch.LongTensor(batch['passage_token_ids']), volatile=True).cuda()
@@ -297,23 +298,23 @@ class RCModel(object):
             # batch_size * max_passage_num x padded_p_len x 2
             answer_prob = self.model(p, q)
             # batch_size * max_passage_num x padded_p_len
-            answer_begin_prob = answer_prob[:, :, 0].contiguous().view(answer_prob.size(0), answer_prob.size(1))
+            answer_begin_prob = answer_prob[:, :, 0].contiguous()
             # batch_size * max_passage_num x padded_p_len
-            answer_end_prob = answer_prob[:, :, 1].contiguous().view(answer_prob.size(0), answer_prob.size(1))
+            answer_end_prob = answer_prob[:, :, 1].contiguous()
             # batch_size * max_passage_num
-            _, predict_max_begin_index = torch.max(answer_begin_prob, 1)
-            _, predict_max_end_index = torch.max(answer_end_prob, 1)
+            # _, predict_max_begin_index = torch.max(answer_begin_prob, 1)
+            # _, predict_max_end_index = torch.max(answer_end_prob, 1)
             #
             # batch_size * max_passage_num
-            answer_begin_prob_log = torch.log(answer_begin_prob[range(predict_max_begin_index.size(0)),
-                                                                start_label.data] + 1e-6)
-            answer_end_prob_log = torch.log(answer_end_prob[range(predict_max_begin_index.size(0)),
-                                                            end_label.data] + 1e-6)
+            # answer_begin_prob_log = torch.log(answer_begin_prob[range(predict_max_begin_index.size(0)),
+            #                                                     start_label.data] + 1e-6)
+            # answer_end_prob_log = torch.log(answer_end_prob[range(predict_max_begin_index.size(0)),
+            #                                                 end_label.data] + 1e-6)
             # batch_size * max_passage_num
-            total_prob = -(answer_begin_prob_log + answer_end_prob_log)
-            loss = torch.mean(total_prob)
-            total_loss += loss.data[0]
-            total_num += len(batch['raw_data'])
+            # total_prob = -(answer_begin_prob_log + answer_end_prob_log)
+            # loss = torch.mean(total_prob)
+            # total_loss += loss.data[0]
+            # total_num += len(batch['raw_data'])
             # padded_p_len = len(batch['passage_token_ids'][0])
             max_passage_num = p.size(0) // start_label.size(0)
             for idx, sample in enumerate(batch['raw_data']):
@@ -347,7 +348,7 @@ class RCModel(object):
             print('Saving {} results to {}'.format(result_prefix, result_file))
 
         # this average loss is invalid on test set, since we don't have true start_id and end_id
-        ave_loss = 1.0 * total_loss / len(eval_batches)
+        # ave_loss = 1.0 * total_loss / num_of_batch
         # compute the bleu and rouge scores if reference answers is provided
         if len(ref_answers) > 0:
             pred_dict, ref_dict = {}, {}
@@ -359,7 +360,7 @@ class RCModel(object):
             bleu_rouge = compute_bleu_rouge(pred_dict, ref_dict)
         else:
             bleu_rouge = None
-        return ave_loss, bleu_rouge
+        return bleu_rouge
         # des_pred_answers, des_ref_answers, ent_pred_answers, ent_ref_answers, yes_pred_answers, yes_ref_answers \
         #     = [], [], [], [], [], []
         #

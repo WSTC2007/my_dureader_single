@@ -27,5 +27,8 @@ import codecs
 # G = F.tanh(G_p + G_q + G_r)  # batch x time x out
 # alpha = torch.matmul(G, self.w[depth])  # batch x time
 
-a = torch.Tensor([1, 2])
-print(a.size(0))
+a = torch.randn(3, 4, 2)
+print("aaaaaaa")
+print(a)
+print("bbbbbbb")
+print(a[:, :, 0])
