@@ -278,7 +278,7 @@ class RCModel(object):
             save_full_info: if True, the pred_answers will be added to raw sample and saved
         """
         pred_answers, ref_answers = [], []
-        total_loss, total_num, num_of_batch = 0, 0, 0
+        total_num, num_of_batch, correct_p_num = 0, 0, 0
         self.model.eval()
         for b_itx, batch in enumerate(eval_batches):
             num_of_batch += 1
@@ -294,7 +294,7 @@ class RCModel(object):
             # batch_size
             start_label = Variable(torch.LongTensor(batch['start_id']), volatile=True).cuda()
             # batch_size
-            end_label = Variable(torch.LongTensor(batch['end_id']), volatile=True).cuda()
+            # end_label = Variable(torch.LongTensor(batch['end_id']), volatile=True).cuda()
             # batch_size * max_passage_num x padded_p_len x 2
             answer_prob = self.model(p, q)
             # batch_size * max_passage_num x padded_p_len
@@ -314,7 +314,7 @@ class RCModel(object):
             # total_prob = -(answer_begin_prob_log + answer_end_prob_log)
             # loss = torch.mean(total_prob)
             # total_loss += loss.data[0]
-            # total_num += len(batch['raw_data'])
+            total_num += len(batch['raw_data'])
             # padded_p_len = len(batch['passage_token_ids'][0])
             max_passage_num = p.size(0) // start_label.size(0)
             for idx, sample in enumerate(batch['raw_data']):
@@ -322,7 +322,10 @@ class RCModel(object):
                 start_prob = answer_begin_prob[idx * max_passage_num: (idx + 1) * max_passage_num, :]
                 end_prob = answer_end_prob[idx * max_passage_num: (idx + 1) * max_passage_num, :]
 
-                best_answer = self.find_best_answer(sample, start_prob, end_prob)
+                best_answer, best_p_idx = self.find_best_answer(sample, start_prob, end_prob)
+                if best_p_idx in sample['answer_passages']:
+                    correct_p_num += 1
+
                 if save_full_info:
                     sample['pred_answers'] = [best_answer]
                     pred_answers.append(sample)
@@ -360,6 +363,7 @@ class RCModel(object):
             bleu_rouge = compute_bleu_rouge(pred_dict, ref_dict)
         else:
             bleu_rouge = None
+        print('correct passage num is {} in {}'.format(correct_p_num, total_num))
         return bleu_rouge
         # des_pred_answers, des_ref_answers, ent_pred_answers, ent_ref_answers, yes_pred_answers, yes_ref_answers \
         #     = [], [], [], [], [], []
@@ -430,7 +434,7 @@ class RCModel(object):
         else:
             best_answer = ''.join(
                 sample['passages'][best_p_idx]['passage_tokens'][best_span[0]: best_span[1] + 1])
-        return best_answer
+        return best_answer, best_p_idx
 
     def find_best_answer_for_passage(self, start_probs, end_probs, passage_len=None):
         """
