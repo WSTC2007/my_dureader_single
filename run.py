@@ -40,9 +40,9 @@ def parse_args():
                                 help='weight decay')
     train_settings.add_argument('--dropout_prob', type=float, default=0.5,
                                 help='probability of an element to be zeroed')
-    train_settings.add_argument('--batch_size', type=int, default=32,
+    train_settings.add_argument('--batch_size', type=int, default=64,
                                 help='train batch size')
-    train_settings.add_argument('--epochs', type=int, default=50,
+    train_settings.add_argument('--epochs', type=int, default=100,
                                 help='train epochs')
     train_settings.add_argument('--use_pre_train', type=bool, default=True,
                                 help='use pre_train vec')
@@ -65,30 +65,33 @@ def parse_args():
 
     path_settings = parser.add_argument_group('path settings')
     path_settings.add_argument('--train_files', nargs='+',
-                               default=['./data/demo/trainset/search.train.json'],
+                               # default=['./data/demo/trainset/search.train.json'],
                                # default=['./data/preprocessed/trainset/search.train.json',
                                #          './data/preprocessed/trainset/zhidao.train.json'],
                                # default=['./data/preprocessed/trainset/search.train.json'],
+                               default=['./data/preprocessed/trainset/zhidao.train.json'],
                                help='list of files that contain the preprocessed train data')
     path_settings.add_argument('--dev_files', nargs='+',
-                               default=['./data/demo/devset/search.dev.json'],
+                               # default=['./data/demo/devset/search.dev.json'],
                                # default=['./data/preprocessed/devset/search.dev.json',
                                #          './data/preprocessed/devset/zhidao.dev.json'],
                                # default=['./data/preprocessed/devset/search.dev.json'],
+                               default=['./data/preprocessed/devset/zhidao.dev.json'],
                                help='list of files that contain the preprocessed dev data')
     path_settings.add_argument('--test_files', nargs='+',
                                # default=['./data/preprocessed/testset/search.test.json',
                                #          './data/preprocessed/testset/zhidao.test.json'],
                                # default=['./data/preprocessed/testset/search.test.json'],
-                               default=['./data/demo/testset/search.test.json'],
+                               default=['./data/preprocessed/testset/zhidao.test.json'],
+                               # default=['./data/demo/testset/search.test.json'],
                                help='list of files that contain the preprocessed test data')
     path_settings.add_argument('--pre_train_file', type=str,
                                default='./data/wiki.zh.vec', help='pre_train files')
-    path_settings.add_argument('--vocab_dir', default='./data/vocab/',
+    path_settings.add_argument('--vocab_dir', default='./data/vocab_zhidao/',
                                help='the dir to save vocabulary')
-    path_settings.add_argument('--model_dir', default='./data/models/',
+    path_settings.add_argument('--model_dir', default='./data/models_zhidao/',
                                help='the dir to store models')
-    path_settings.add_argument('--result_dir', default='../data/results/',
+    path_settings.add_argument('--result_dir', default='../data/results_zhidao/',
                                help='the dir to output the results')
 
     return parser.parse_args()
