@@ -86,7 +86,7 @@ def parse_args():
                                # default=['./data/demo/testset/search.test.json'],
                                help='list of files that contain the preprocessed test data')
     path_settings.add_argument('--pre_train_file', type=str,
-                               default='./data/wiki.zh.vec', help='pre_train files')
+                               default='./data/wiki.zh.new.vec', help='pre_train files')
     path_settings.add_argument('--vocab_dir', default='./data/vocab_zhidao/',
                                help='the dir to save vocabulary')
     path_settings.add_argument('--model_dir', default='./data/models_zhidao/',
