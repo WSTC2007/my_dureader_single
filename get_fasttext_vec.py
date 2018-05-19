@@ -2,6 +2,7 @@
 from fastText import load_model
 import argparse
 from dataset import BRCDataset
+from vocab import Vocab
 import codecs
 
 """
@@ -20,10 +21,10 @@ if __name__ == "__main__":
     parser.add_argument('--max_q_len', type=int, default=60,
                                 help='max length of question')
     parser.add_argument('--train_files', nargs='+',
-                               default=['./data/demo/trainset/search.train.json'],
+                               # default=['./data/demo/trainset/search.train.json'],
                                # default=['./data/preprocessed/trainset/search.train.json',
                                #          './data/preprocessed/trainset/zhidao.train.json'],
-                               # default=['./data/preprocessed/trainset/search.train.json'],
+                               default=['./data/preprocessed/trainset/search.train.json'],
                                help='list of files that contain the preprocessed train data')
     parser.add_argument('--pre_train_file', type=str,
                                default='./data/wiki.zh.new.vec', help='pre_train files')
@@ -41,6 +42,15 @@ if __name__ == "__main__":
         write_file.write(vocab + " " + " ".join(value_str) + '\n')
     write_file.close()
     print("over!")
+    # vocab_set = Vocab(lower=True)
+    # for word in brc_data.word_iter('train'):
+    #     vocab_set.add(word)
+    # print("vocab size is ", vocab_set.size())
+    # vocab_set.filter_tokens_by_cnt(min_cnt=2)
+    # print("after filtered vocab size is ", vocab_set.size())
+    # vocab_set.randomly_init_embeddings(300)
+    # vocab_set.load_pretrained_embeddings('./data/wiki.zh.search.vec')
+    # print("over")
 
 
 

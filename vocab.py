@@ -150,7 +150,12 @@ class Vocab(object):
             token = contents[0]
             if token not in self.token2id:
                 continue
-            self.embeddings[self.get_id(token)] = list(map(float, contents[1:]))
+            # print(token)
+            try:
+                self.embeddings[self.get_id(token)] = list(map(float, contents[1:]))
+            except ValueError:
+                continue
+            # print("aaaaaaaa")
             over_map_num += 1
         print("over_map word num is ", over_map_num)
 
