@@ -40,7 +40,7 @@ def parse_args():
                                 help='weight decay')
     train_settings.add_argument('--dropout_prob', type=float, default=0.5,
                                 help='probability of an element to be zeroed')
-    train_settings.add_argument('--batch_size', type=int, default=64,
+    train_settings.add_argument('--batch_size', type=int, default=16,
                                 help='train batch size')
     train_settings.add_argument('--epochs', type=int, default=100,
                                 help='train epochs')
@@ -79,11 +79,11 @@ def parse_args():
                                default=['./data/preprocessed/devset/search.dev.json'],
                                help='list of files that contain the preprocessed dev data')
     path_settings.add_argument('--test_files', nargs='+',
+                               # default=['./data/demo/testset/search.test.json'],
                                # default=['./data/preprocessed/testset/search.test.json',
                                #          './data/preprocessed/testset/zhidao.test.json'],
                                # default=['./data/preprocessed/testset/search.test.json'],
                                default=['./data/preprocessed/testset/search.test.json'],
-                               # default=['./data/demo/testset/search.test.json'],
                                help='list of files that contain the preprocessed test data')
     path_settings.add_argument('--pre_train_file', type=str,
                                default='./data/wiki.zh.search.vec', help='pre_train files')
@@ -91,7 +91,7 @@ def parse_args():
                                help='the dir to save vocabulary')
     path_settings.add_argument('--model_dir', default='./data/models_search_pretrain/',
                                help='the dir to store models')
-    path_settings.add_argument('--result_dir', default='../data/results_search_pretrain/',
+    path_settings.add_argument('--result_dir', default='../data/results_demo/',
                                help='the dir to output the results')
 
     return parser.parse_args()
@@ -150,17 +150,13 @@ def evaluate(args):
     brc_data = BRCDataset(args.max_p_num, args.max_p_len, args.max_q_len, dev_files=args.dev_files)
     brc_data.convert_to_ids(vocab)
     rc_model = RCModel(vocab, args)
-    rc_model.restore(model_dir=args.model_dir, model_prefix=args.algo+'_13')
+    rc_model.restore(model_dir=args.model_dir, model_prefix=args.algo+'_7')
     dev_batches = brc_data.gen_mini_batches('dev', args.batch_size,
                                             pad_id=vocab.get_id(vocab.pad_token), shuffle=False)
-    des_bleu_rouge, ent_bleu_rouge, yes_bleu_rouge = rc_model.evaluate(
-        dev_batches, result_dir=args.result_dir, result_prefix='dev.predicted')
-    print("des_bleu_rouge is ")
-    print(des_bleu_rouge)
-    print("ent_bleu_rouge is ")
-    print(ent_bleu_rouge)
-    print("yes_bleu_rouge is ")
-    print(yes_bleu_rouge)
+    bleu_rouge = rc_model.evaluate(dev_batches)
+    # bleu_rouge = rc_model.evaluate(dev_batches,
+    #                                result_dir=args.result_dir, result_prefix='dev.predicted')
+
 
 
 def predict(args):
@@ -186,9 +182,9 @@ def run():
     Prepares and runs the whole system.
     """
     args = parse_args()
-    prepare(args)
-    train(args)
-    # evaluate(args)
+    # prepare(args)
+    # train(args)
+    evaluate(args)
     # predict(args)
 
 

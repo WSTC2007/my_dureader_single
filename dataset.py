@@ -43,14 +43,14 @@ class BRCDataset(object):
         if dev_files:
             for dev_file in dev_files:
                 print("add dev_file")
-                self.dev_set += self._load_dataset(dev_file)
+                self.dev_set += self._load_dataset(dev_file, dev=True)
 
         if test_files:
             for test_file in test_files:
                 print("add test_file")
                 self.test_set += self._load_dataset(test_file)
 
-    def _load_dataset(self, data_path, train=False):
+    def _load_dataset(self, data_path, train=False, dev=False):
         """
         Loads the dataset
         Args:
@@ -94,11 +94,16 @@ class BRCDataset(object):
                         fake_passage_tokens = []
                         for para_info in para_infos[:1]:
                             fake_passage_tokens += para_info[0]
-                        sample['passages'].append({'passage_tokens': fake_passage_tokens})
+                        if dev:
+                            sample['passages'].append(
+                                {'passage_tokens': fake_passage_tokens,
+                                 'is_selected': doc['is_selected']})
+                        else:
+                            sample['passages'].append({'passage_tokens': fake_passage_tokens})
                 data_set.append(sample)
         return data_set
 
-    def _one_mini_batch(self, data, indices, pad_id, train=False):
+    def _one_mini_batch(self, data, indices, pad_id, train=False, dev=False):
         """
         Get one mini batch
         Args:
@@ -114,7 +119,9 @@ class BRCDataset(object):
                       'passage_token_ids': [],
                       'passage_length': [],
                       'start_id': [],
-                      'end_id': []}
+                      'end_id': [],
+                      'is_selected': []  # only not empty in train or dev
+                      }
         if train:
             for sidx, sample in enumerate(batch_data['raw_data']):
                 batch_data['question_token_ids'].append(sample['question_token_ids'])
@@ -122,6 +129,10 @@ class BRCDataset(object):
                 passage_token_ids = sample['passages'][sample['answer_passages'][0]]['passage_token_ids']
                 batch_data['passage_token_ids'].append(passage_token_ids)
                 batch_data['passage_length'].append(min(len(passage_token_ids), self.max_p_len))
+                if sample['passages'][sample['answer_passages'][0]]['is_selected']:
+                    batch_data['is_selected'].append(1)
+                else:
+                    batch_data['is_selected'].append(0)
         else:
             max_passage_num = max([len(sample['passages']) for sample in batch_data['raw_data']])
             max_passage_num = min(self.max_p_num, max_passage_num)
@@ -133,11 +144,19 @@ class BRCDataset(object):
                         passage_token_ids = sample['passages'][pidx]['passage_token_ids']
                         batch_data['passage_token_ids'].append(passage_token_ids)
                         batch_data['passage_length'].append(min(len(passage_token_ids), self.max_p_len))
+                        if dev:
+                            if sample['passages'][pidx]['is_selected']:
+                                batch_data['is_selected'].append(1)
+                            else:
+                                batch_data['is_selected'].append(0)
                     else:
                         batch_data['question_token_ids'].append([])
                         batch_data['question_length'].append(0)
                         batch_data['passage_token_ids'].append([])
                         batch_data['passage_length'].append(0)
+                        if dev:
+                            batch_data['is_selected'].append(0)
+
         batch_data, padded_p_len, padded_q_len = self._dynamic_padding(batch_data, pad_id)
         for sample in batch_data['raw_data']:
             if 'answer_passages' in sample and len(sample['answer_passages']):
@@ -201,7 +220,7 @@ class BRCDataset(object):
                 for passage in sample['passages']:
                     passage['passage_token_ids'] = vocab.convert_to_ids(passage['passage_tokens'])
 
-    def gen_mini_batches(self, set_name, batch_size, pad_id, shuffle=True, train=True):
+    def gen_mini_batches(self, set_name, batch_size, pad_id, shuffle=True, train=False, dev=False):
         """
         Generate data batches for a specific dataset (train/dev/test)
         Args:
@@ -226,4 +245,4 @@ class BRCDataset(object):
             np.random.shuffle(indices)
         for batch_start in np.arange(0, data_size, batch_size):
             batch_indices = indices[batch_start: batch_start + batch_size]
-            yield self._one_mini_batch(data, batch_indices, pad_id, train)
+            yield self._one_mini_batch(data, batch_indices, pad_id, train=train, dev=dev)

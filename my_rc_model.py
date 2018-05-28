@@ -250,7 +250,7 @@ class RCModel(object):
             if evaluate:
                 print('Evaluating the model after epoch {}'.format(epoch))
                 if data.dev_set is not None:
-                    eval_batches = data.gen_mini_batches('dev', batch_size, pad_id, shuffle=False, train=False)
+                    eval_batches = data.gen_mini_batches('dev', batch_size, pad_id, shuffle=False, dev=True)
                     bleu_rouge = self.evaluate(eval_batches)
                     print('Dev eval result: {}'.format(bleu_rouge))
 
@@ -278,19 +278,16 @@ class RCModel(object):
             save_full_info: if True, the pred_answers will be added to raw sample and saved
         """
         pred_answers, ref_answers = [], []
-        total_num, num_of_batch, correct_p_num = 0, 0, 0
+        total_num, num_of_batch, correct_p_num, select_total_num, select_true_num = 0, 0, 0, 0, 0
         self.model.eval()
         for b_itx, batch in enumerate(eval_batches):
+            print("aaaaaaaaa")
             num_of_batch += 1
             # print("now is batch: ", b_itx)
             # batch_size * max_passage_num x padded_p_len
             p = Variable(torch.LongTensor(batch['passage_token_ids']), volatile=True).cuda()
             # batch_size * max_passage_num x padded_q_len
             q = Variable(torch.LongTensor(batch['question_token_ids']), volatile=True).cuda()
-            # batch_size * max_passage_num
-            # p_length = Variable(torch.LongTensor(batch['passage_length']), volatile=True).cuda()
-            # # batch_size * max_passage_num
-            # q_length = Variable(torch.LongTensor(batch['question_length']), volatile=True).cuda()
             # batch_size
             start_label = Variable(torch.LongTensor(batch['start_id']), volatile=True).cuda()
             # batch_size
@@ -301,23 +298,11 @@ class RCModel(object):
             answer_begin_prob = answer_prob[:, :, 0].contiguous()
             # batch_size * max_passage_num x padded_p_len
             answer_end_prob = answer_prob[:, :, 1].contiguous()
-            # batch_size * max_passage_num
-            # _, predict_max_begin_index = torch.max(answer_begin_prob, 1)
-            # _, predict_max_end_index = torch.max(answer_end_prob, 1)
-            #
-            # batch_size * max_passage_num
-            # answer_begin_prob_log = torch.log(answer_begin_prob[range(predict_max_begin_index.size(0)),
-            #                                                     start_label.data] + 1e-6)
-            # answer_end_prob_log = torch.log(answer_end_prob[range(predict_max_begin_index.size(0)),
-            #                                                 end_label.data] + 1e-6)
-            # batch_size * max_passage_num
-            # total_prob = -(answer_begin_prob_log + answer_end_prob_log)
-            # loss = torch.mean(total_prob)
-            # total_loss += loss.data[0]
             total_num += len(batch['raw_data'])
             # padded_p_len = len(batch['passage_token_ids'][0])
             max_passage_num = p.size(0) // start_label.size(0)
             for idx, sample in enumerate(batch['raw_data']):
+                select_total_num += 1
                 # max_passage_num x padded_p_len
                 start_prob = answer_begin_prob[idx * max_passage_num: (idx + 1) * max_passage_num, :]
                 end_prob = answer_end_prob[idx * max_passage_num: (idx + 1) * max_passage_num, :]
@@ -325,6 +310,8 @@ class RCModel(object):
                 best_answer, best_p_idx = self.find_best_answer(sample, start_prob, end_prob)
                 if best_p_idx in sample['answer_passages']:
                     correct_p_num += 1
+                if sample['passages'][best_p_idx]['is_selected']:
+                    select_true_num += 1
 
                 if save_full_info:
                     sample['pred_answers'] = [best_answer]
@@ -363,55 +350,9 @@ class RCModel(object):
             bleu_rouge = compute_bleu_rouge(pred_dict, ref_dict)
         else:
             bleu_rouge = None
+        print('correct selected passage num is {} in {}'.format(select_true_num, select_total_num))
         print('correct passage num is {} in {}'.format(correct_p_num, total_num))
         return bleu_rouge
-        # des_pred_answers, des_ref_answers, ent_pred_answers, ent_ref_answers, yes_pred_answers, yes_ref_answers \
-        #     = [], [], [], [], [], []
-        #
-        # for pred, ref in zip(pred_answers, ref_answers):
-        #     if pred['question_type'] == 'DESCRIPTION':
-        #         des_pred_answers.append(pred)
-        #         des_ref_answers.append(ref)
-        #     elif pred['question_type'] == 'ENTITY':
-        #         ent_pred_answers.append(pred)
-        #         ent_ref_answers.append(ref)
-        #     elif pred['question_type'] == 'YES_NO':
-        #         yes_pred_answers.append(pred)
-        #         yes_ref_answers.append(ref)
-        #
-        # if len(des_ref_answers) > 0:
-        #     des_pred_dict, des_ref_dict = {}, {}
-        #     for pred, ref in zip(des_pred_answers, des_ref_answers):
-        #         question_id = ref['question_id']
-        #         if len(ref['answers']) > 0:
-        #             des_pred_dict[question_id] = normalize(pred['answers'])
-        #             des_ref_dict[question_id] = normalize(ref['answers'])
-        #     des_bleu_rouge = compute_bleu_rouge(des_pred_dict, des_ref_dict)
-        # else:
-        #     des_bleu_rouge = None
-        #
-        # if len(ent_ref_answers) > 0:
-        #     ent_pred_dict, ent_ref_dict = {}, {}
-        #     for pred, ref in zip(ent_pred_answers, ent_ref_answers):
-        #         question_id = ref['question_id']
-        #         if len(ref['answers']) > 0:
-        #             ent_pred_dict[question_id] = normalize(pred['answers'])
-        #             ent_ref_dict[question_id] = normalize(ref['answers'])
-        #     ent_bleu_rouge = compute_bleu_rouge(ent_pred_dict, ent_ref_dict)
-        # else:
-        #     ent_bleu_rouge = None
-        #
-        # if len(yes_ref_answers) > 0:
-        #     yes_pred_dict, yes_ref_dict = {}, {}
-        #     for pred, ref in zip(yes_pred_answers, yes_ref_answers):
-        #         question_id = ref['question_id']
-        #         if len(ref['answers']) > 0:
-        #             yes_pred_dict[question_id] = normalize(pred['answers'])
-        #             yes_ref_dict[question_id] = normalize(ref['answers'])
-        #     yes_bleu_rouge = compute_bleu_rouge(yes_pred_dict, yes_ref_dict)
-        # else:
-        #     yes_bleu_rouge = None
-        # return des_bleu_rouge, ent_bleu_rouge, yes_bleu_rouge
 
     def find_best_answer(self, sample, start_prob, end_prob):
         #  start_prob: max_passage_num x padded_p_len
